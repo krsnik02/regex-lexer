@@ -1,7 +1,9 @@
 [package]
 name = "regex-lexer"
 version = "0.1.0"
-authors = ["krsnik <ghartshaw@gmail.com>"]
+authors = ["Gwenhwyfar Hartshaw <ghartshaw@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/krsnik02/regex-lexer"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

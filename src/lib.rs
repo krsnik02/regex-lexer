@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/regex-lexer/0.1.0")]
 //! A regex-based lexer (tokenizer).
 //!
 //! ```
@@ -23,7 +24,7 @@
 //!     .token(r"\(", |_| Some(Token::Open))
 //!     .token(r"\)", |_| Some(Token::Close))
 //!     .token(r"\s+", |_| None) // skip whitespace
-//!     .build();
+//!     .build()?;
 //!
 //! let source = "(1 + 2) * 3";
 //! assert_eq!(
@@ -33,6 +34,7 @@
 //!         Token::Mul, Token::Num(3)
 //!     ],
 //! );
+//! # Ok::<(), regex::Error>(())
 //! ```
 
 use regex::{Regex, RegexSet};
@@ -41,6 +43,15 @@ use regex::{Regex, RegexSet};
 pub struct LexerBuilder<'r, 't, T: 't> {
     regexes: Vec<&'r str>,
     fns: Vec<Box<dyn Fn(&'t str) -> Option<T>>>,
+}
+
+impl<'r, 't, T: 't> std::fmt::Debug for LexerBuilder<'r, 't, T> {
+    /// Shows the matched regexes
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("LexerBuilder")
+            .field("regexes", &self.regexes)
+            .finish() // todo: finish_non_exhaustive
+    }
 }
 
 impl<'r, 't, T: 't> Default for LexerBuilder<'r, 't, T> {
@@ -75,12 +86,13 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     ///     .token(r"[0-9]*", |num| Some(Token::Num(num.parse().unwrap())))
     ///     .token(r"\s+", |_| None) // skip whitespace
     ///     // ...
-    ///     .build();
+    ///     .build()?;
     ///
     /// assert_eq!(
     ///     lexer.tokens("1 2 3").collect::<Vec<_>>(),
     ///     vec![Token::Num(1), Token::Num(2), Token::Num(3)],
     /// );
+    /// # Ok::<(), regex::Error>(())
     /// ```
     ///
     /// If multiple regexes all have the same longest match, then whichever is defined last
@@ -97,10 +109,11 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     ///     .token(r"[a-zA-Z_][a-zA-Z0-9_]*", |id| Some(Token::Ident(id)))
     ///     .token(r"then", |_| Some(Token::Then))
     ///     // ...
-    ///     .build();
+    ///     .build()?;
     ///
     /// assert_eq!(lexer.tokens("then").next(), Some(Token::Then));
     /// assert_eq!(lexer.tokens("then_perish").next(), Some(Token::Ident("then_perish")));
+    /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn token<F>(mut self, re: &'r str, f: F) -> Self
     where
@@ -111,21 +124,24 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
         self
     }
 
-    /// Return the [Lexer](struct.Lexer.html) which matches these tokens.
-    pub fn build(self) -> Lexer<'t, T> {
+    /// Construct a [Lexer](struct.Lexer.html) which matches these tokens.
+    ///
+    /// ## Errors
+    ///
+    /// If a regex cannot be compiled, a [regex::Error](https://crates.io/regex/struct.Error.html) is returned.
+    pub fn build(self) -> Result<Lexer<'t, T>, regex::Error> {
         let regexes = self.regexes.into_iter().map(|r| format!("^{}", r));
-        let regex_set = RegexSet::new(regexes).unwrap();
-        let regexes = regex_set
-            .patterns()
-            .iter()
-            .map(|p| Regex::new(p).unwrap())
-            .collect();
+        let regex_set = RegexSet::new(regexes)?;
+        let mut regexes = Vec::new();
+        for pattern in regex_set.patterns() {
+            regexes.push(Regex::new(pattern)?);
+        }
 
-        Lexer {
+        Ok(Lexer {
             fns: self.fns,
             regexes,
             regex_set,
-        }
+        })
     }
 }
 
@@ -142,7 +158,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 ///     .token(r"\p{XID_Start}\p{XID_Continue}*", |id| Some(Token::Ident(id)))
 ///     .token(r"\s+", |_| None) // skip whitespace
 ///     // ...
-///     .build();
+///     .build()?;
 ///
 /// let tokens = lexer.tokens("these are some identifiers");
 ///
@@ -150,6 +166,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 /// #    tokens.collect::<Vec<_>>(),
 /// #    vec![Token::Ident("these"), Token::Ident("are"), Token::Ident("some"), Token::Ident("identifiers")],
 /// # );
+/// # Ok::<(), regex::Error>(())
 /// ```
 pub struct Lexer<'t, T: 't> {
     fns: Vec<Box<dyn Fn(&'t str) -> Option<T>>>,
@@ -173,7 +190,17 @@ impl<'t, T: 't> Lexer<'t, T> {
     }
 }
 
+impl<'t, T: 't> std::fmt::Debug for Lexer<'t, T> {
+    /// Shows the original regular expressions
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Lexer")
+            .field("regexes", &self.regexes)
+            .finish() // todo: finish_non_exhaustive
+    }
+}
+
 /// The type returned by [Lexer::tokens](struct.Lexer.html#method.tokens).
+#[derive(Debug)]
 pub struct Tokens<'l, 't, T: 't> {
     lexer: &'l Lexer<'t, T>,
     source: &'t str,

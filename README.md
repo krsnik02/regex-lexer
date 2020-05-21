@@ -1,4 +1,6 @@
 # regex-lexer
+[![docs.rs](https://docs.rs/regex-lexer/badge.svg)](https://docs.rs/regex-lexer/)
+
 A regex-based lexer (tokenizer) in Rust.
 
 ## Basic Usage

@@ -15,7 +15,7 @@
 //!     Close,
 //! }
 //!
-//! let lexer = LexerBuilder::new()
+//! let mut lexer = LexerBuilder::new()
 //!     .token(r"[0-9]+", |tok| Some(Token::Num(tok.parse().unwrap())))
 //!     .token(r"\+", |_| Some(Token::Add))
 //!     .token(r"-", |_| Some(Token::Sub))
@@ -42,7 +42,7 @@ use regex::{Regex, RegexSet};
 /// Builder struct for [Lexer](struct.Lexer.html).
 pub struct LexerBuilder<'r, 't, T: 't> {
     regexes: Vec<&'r str>,
-    fns: Vec<Box<dyn Fn(&'t str) -> Option<T>>>,
+    fns: Vec<Box<dyn FnMut(&'t str) -> Option<T>>>,
 }
 
 impl<'r, 't, T: 't> std::fmt::Debug for LexerBuilder<'r, 't, T> {
@@ -82,7 +82,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     ///     // ...
     /// }
     ///
-    /// let lexer = regex_lexer::LexerBuilder::new()
+    /// let mut lexer = regex_lexer::LexerBuilder::new()
     ///     .token(r"[0-9]*", |num| Some(Token::Num(num.parse().unwrap())))
     ///     .token(r"\s+", |_| None) // skip whitespace
     ///     // ...
@@ -105,7 +105,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     ///     // ...
     /// }
     ///
-    /// let lexer = regex_lexer::LexerBuilder::new()
+    /// let mut lexer = regex_lexer::LexerBuilder::new()
     ///     .token(r"[a-zA-Z_][a-zA-Z0-9_]*", |id| Some(Token::Ident(id)))
     ///     .token(r"then", |_| Some(Token::Then))
     ///     // ...
@@ -117,7 +117,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     /// ```
     pub fn token<F>(mut self, re: &'r str, f: F) -> Self
     where
-        F: Fn(&'t str) -> Option<T> + 'static,
+        F: FnMut(&'t str) -> Option<T> + 'static,
     {
         self.regexes.push(re);
         self.fns.push(Box::new(f));
@@ -154,7 +154,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 ///     // ...
 /// }
 ///
-/// let lexer = regex_lexer::LexerBuilder::new()
+/// let mut lexer = regex_lexer::LexerBuilder::new()
 ///     .token(r"\p{XID_Start}\p{XID_Continue}*", |id| Some(Token::Ident(id)))
 ///     .token(r"\s+", |_| None) // skip whitespace
 ///     // ...
@@ -169,7 +169,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 /// # Ok::<(), regex::Error>(())
 /// ```
 pub struct Lexer<'t, T: 't> {
-    fns: Vec<Box<dyn Fn(&'t str) -> Option<T>>>,
+    fns: Vec<Box<dyn FnMut(&'t str) -> Option<T>>>,
     regexes: Vec<Regex>,
     regex_set: RegexSet,
 }
@@ -181,11 +181,11 @@ impl<'t, T: 't> Lexer<'t, T> {
     }
 
     /// Return an iterator over all matched tokens.
-    pub fn tokens<'l>(&'l self, source: &'t str) -> Tokens<'l, 't, T> {
+    pub fn tokens<'l>(&'l mut self, source: &'t str) -> Tokens<'l, 't, T> {
         Tokens {
             lexer: self,
             source,
-            location: 0,
+            position: 0,
         }
     }
 }
@@ -202,9 +202,9 @@ impl<'t, T: 't> std::fmt::Debug for Lexer<'t, T> {
 /// The type returned by [Lexer::tokens](struct.Lexer.html#method.tokens).
 #[derive(Debug)]
 pub struct Tokens<'l, 't, T: 't> {
-    lexer: &'l Lexer<'t, T>,
+    lexer: &'l mut Lexer<'t, T>,
     source: &'t str,
-    location: usize,
+    position: usize,
 }
 
 impl<'l, 't, T: 't> Iterator for Tokens<'l, 't, T> {
@@ -212,11 +212,11 @@ impl<'l, 't, T: 't> Iterator for Tokens<'l, 't, T> {
 
     fn next(&mut self) -> Option<T> {
         loop {
-            if self.location == self.source.len() {
+            if self.position == self.source.len() {
                 return None;
             }
 
-            let string = &self.source[self.location..];
+            let string = &self.source[self.position..];
             let match_set = self.lexer.regex_set.matches(string);
             let (len, i) = match_set
                 .into_iter()
@@ -228,9 +228,10 @@ impl<'l, 't, T: 't> Iterator for Tokens<'l, 't, T> {
                 .max_by_key(|(len, _)| *len)
                 .unwrap();
 
-            let tok_str = &self.source[self.location..self.location + len];
-            self.location += len;
-            match self.lexer.fns[i](tok_str) {
+            let tok_str = &self.source[self.position..self.position + len];
+            self.position += len;
+            let func = &mut self.lexer.fns[i];
+            match func(tok_str) {
                 Some(tok) => return Some(tok),
                 None => {}
             }

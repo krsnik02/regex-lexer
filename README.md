@@ -13,7 +13,7 @@ enum Token {
     // ...
 }
 
-let lexer = regex_lexer::LexerBuilder::new()
+let mut lexer = regex_lexer::LexerBuilder::new()
   .token(r"[0-9]+", |num| Some(Token::Num(num.parse().unwrap())))
   .token(r"\s+", |_| None) // skip whitespace
   // ...

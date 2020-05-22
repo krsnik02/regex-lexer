@@ -230,7 +230,7 @@ impl<'l, 't, T: 't> Iterator for Tokens<'l, 't, T> {
 
             let tok_str = &self.source[self.position..self.position + len];
             self.position += len;
-            let func = &mut self.lexer.fns[i];
+            let func = &self.lexer.fns[i];
             match func(tok_str) {
                 Some(tok) => return Some(tok),
                 None => {}

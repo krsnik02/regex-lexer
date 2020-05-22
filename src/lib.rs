@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/regex-lexer/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/regex-lexer/0.1.0/regex-lexer")]
 //! A regex-based lexer (tokenizer).
 //!
 //! ```
@@ -70,7 +70,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     }
 
     /// Add a new token that matches the regular expression `re`.
-    /// This uses the same syntax as the [regex](http://docs.rs/regex) crate.
+    /// This uses the same syntax as the [regex](http://docs.rs/regex/1/regex) crate.
     ///
     /// If `re` gives the longest match, then `f` is called on the matched string.
     /// * If `f` returns `Some(tok)`, emit the token `tok`.
@@ -128,7 +128,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     ///
     /// ## Errors
     ///
-    /// If a regex cannot be compiled, a [regex::Error](https://crates.io/regex/struct.Error.html) is returned.
+    /// If a regex cannot be compiled, a [regex::Error](https://docs.rs/regex/1/regex/enum.Error.html) is returned.
     pub fn build(self) -> Result<Lexer<'t, T>, regex::Error> {
         let regexes = self.regexes.into_iter().map(|r| format!("^{}", r));
         let regex_set = RegexSet::new(regexes)?;

@@ -8,14 +8,14 @@ A regex-based lexer (tokenizer) in Rust.
 
 ## Basic Usage
 ```rust
-enum Token {
-    Num(usize),
+enum Tok {
+    Num,
     // ...
 }
 
 let lexer = regex_lexer::LexerBuilder::new()
-  .token(r"[0-9]+", |num, _| Some(Token::Num(num.parse().unwrap())))
-  .token(r"\s+", |_, _| None) // skip whitespace
+  .token(r"[0-9]+", Tok::Num)
+  .ignore(r"\s+") // skip whitespace
   // ...
   .build();
   

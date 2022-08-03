@@ -2,11 +2,11 @@
 //! A regex-based lexer (tokenizer).
 //!
 //! ```
-//! use regex_lexer::LexerBuilder;
+//! use regex_lexer::{LexerBuilder, Token};
 //!
-//! #[derive(Debug, PartialEq, Eq)]
-//! enum Token {
-//!     Num(u32),
+//! #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+//! enum Tok {
+//!     Num,
 //!     Add,
 //!     Sub,
 //!     Mul,
@@ -16,25 +16,30 @@
 //! }
 //!
 //! let lexer = LexerBuilder::new()
-//!     .token(r"[0-9]+", |ident, _| Some(Token::Num(ident.parse().unwrap())))
-//!     .token(r"\+", |_, _| Some(Token::Add))
-//!     .token(r"-", |_, _| Some(Token::Sub))
-//!     .token(r"\*", |_, _| Some(Token::Mul))
-//!     .token(r"/", |_, _| Some(Token::Div))
-//!     .token(r"\(", |_, _| Some(Token::Open))
-//!     .token(r"\)", |_, _| Some(Token::Close))
-//!     .token(r"\s+", |_, _| None) // skip whitespace
+//!     .token(r"[0-9]+", Tok::Num)
+//!     .token(r"\+", Tok::Add)
+//!     .token(r"-", Tok::Sub)
+//!     .token(r"\*", Tok::Mul)
+//!     .token(r"/", Tok::Div)
+//!     .token(r"\(", Tok::Open)
+//!     .token(r"\)", Tok::Close)
+//!     .ignore(r"\s+")
 //!     .build()?;
 //!
 //! let source = "(1 + 2) * 3";
 //! assert_eq!(
 //!     lexer.tokens(source).collect::<Vec<_>>(),
 //!     vec![
-//!         Token::Open, Token::Num(1), Token::Add, Token::Num(2), Token::Close,
-//!         Token::Mul, Token::Num(3)
+//!         Token { kind: Tok::Open, span: 0..1, text: "(" }, 
+//!         Token { kind: Tok::Num, span: 1..2, text: "1" }, 
+//!         Token { kind: Tok::Add, span: 3..4, text: "+" }, 
+//!         Token { kind: Tok::Num, span: 5..6, text: "2" },
+//!         Token { kind: Tok::Close, span: 6..7, text: ")" },
+//!         Token { kind: Tok::Mul, span: 8..9, text: "*" },
+//!         Token { kind: Tok::Num, span: 10..11, text: "3" },
 //!     ],
 //! );
-//! # Ok::<(), regex::Error>(())
+//! # Ok::<(), regex_lexer::Error>(())
 //! ```
 
 use std::ops::Range;
@@ -42,88 +47,104 @@ use std::ops::Range;
 use regex::{Regex, RegexSet};
 pub use regex::Error;
 
+/// A token returned by the lexer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Token<'t, K> {
+    pub kind: K,
+    pub span: Range<usize>,
+    pub text: &'t str,
+}
+
 /// Builder struct for [Lexer](struct.Lexer.html).
-pub struct LexerBuilder<'r, 't, T: 't> {
+pub struct LexerBuilder<'r, K> {
     regexes: Vec<&'r str>,
-    fns: Vec<Box<dyn Fn(&'t str, Range<usize>) -> Option<T>>>,
+    kinds: Vec<Option<K>>,
 }
 
-impl<'r, 't, T: 't> std::fmt::Debug for LexerBuilder<'r, 't, T> {
-    /// Shows the matched regexes
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_struct("LexerBuilder")
-            .field("regexes", &self.regexes)
-            .finish() // todo: finish_non_exhaustive
-    }
-}
-
-impl<'r, 't, T: 't> Default for LexerBuilder<'r, 't, T> {
+impl<'r, K> Default for LexerBuilder<'r, K> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
+impl<'r, K> LexerBuilder<'r, K> {
     /// Create a new [LexerBuilder](struct.LexerBuilder.html).
     pub fn new() -> Self {
         LexerBuilder {
             regexes: Vec::new(),
-            fns: Vec::new(),
+            kinds: Vec::new(),
         }
     }
 
     /// Add a new token that matches the regular expression `re`.
     /// This uses the same syntax as the [regex](http://docs.rs/regex/1/regex) crate.
     ///
-    /// If `re` gives the longest match, then `f` is called on the matched string.
-    /// * If `f` returns `Some(tok)`, emit the token `tok`.
-    /// * Otherwise, skip this token and emit nothing.
+    /// If the regex matches, it will return a token of kind `kind`.
     /// ```
-    /// #[derive(Debug, PartialEq, Eq)]
-    /// enum Token {
-    ///     Num(usize),
+    /// use regex_lexer::{LexerBuilder, Token};
+    /// 
+    /// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    /// enum Tok {
+    ///     Num,
     ///     // ...
     /// }
     ///
-    /// let lexer = regex_lexer::LexerBuilder::new()
-    ///     .token(r"[0-9]*", |num, _| Some(Token::Num(num.parse().unwrap())))
-    ///     .token(r"\s+", |_, _| None) // skip whitespace
+    /// let lexer = LexerBuilder::new()
+    ///     .token(r"[0-9]*", Tok::Num)
+    ///     .ignore(r"\s+") // skip whitespace
     ///     // ...
     ///     .build()?;
     ///
     /// assert_eq!(
     ///     lexer.tokens("1 2 3").collect::<Vec<_>>(),
-    ///     vec![Token::Num(1), Token::Num(2), Token::Num(3)],
+    ///     vec![
+    ///         Token { kind: Tok::Num, span: 0..1, text: "1" },
+    ///         Token { kind: Tok::Num, span: 2..3, text: "2" },
+    ///         Token { kind: Tok::Num, span: 4..5, text: "3" },
+    ///     ],
     /// );
     /// # Ok::<(), regex::Error>(())
     /// ```
     ///
-    /// If multiple regexes all have the same longest match, then whichever is defined last
-    /// is given priority.
+    /// If multiple regexes all match, then whichever is defined last
+    /// will be given priority.
     /// ```
-    /// #[derive(Debug, PartialEq, Eq)]
-    /// enum Token<'t> {
-    ///     Ident(&'t str),
-    ///     Then,
+    /// use regex_lexer::{LexerBuilder, Token};
+    /// 
+    /// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    /// enum Tok {
+    ///     Ident,
+    ///     Let,
     ///     // ...
     /// }
     ///
-    /// let lexer = regex_lexer::LexerBuilder::new()
-    ///     .token(r"[a-zA-Z_][a-zA-Z0-9_]*", |id, _| Some(Token::Ident(id)))
-    ///     .token(r"then", |_, _| Some(Token::Then))
+    /// let lexer = LexerBuilder::new()
+    ///     .token(r"[a-zA-Z_][a-zA-Z0-9_]*", Tok::Ident)
+    ///     .token(r"let\b", Tok::Let)
     ///     // ...
+    ///     .ignore(r"\s+")
     ///     .build()?;
     ///
-    /// assert_eq!(lexer.tokens("then").next(), Some(Token::Then));
-    /// assert_eq!(lexer.tokens("then_perish").next(), Some(Token::Ident("then_perish")));
+    /// assert_eq!(
+    ///     lexer.tokens("let lettuce").collect::<Vec<_>>(), 
+    ///     vec![
+    ///         Token { kind: Tok::Let, span: 0..3, text: "let" },
+    ///         Token { kind: Tok::Ident, span: 4..11, text: "lettuce" },
+    ///     ],
+    /// );
     /// # Ok::<(), regex::Error>(())
     /// ```
-    pub fn token<F>(mut self, re: &'r str, f: F) -> Self
-    where
-        F: Fn(&'t str, Range<usize>) -> Option<T> + 'static,
+    pub fn token(mut self, re: &'r str, kind: K) -> Self
     {
         self.regexes.push(re);
-        self.fns.push(Box::new(f));
+        self.kinds.push(Some(kind));
+        self
+    }
+
+    /// Add a new regex which if matched will ignore the matched text.
+    pub fn ignore(mut self, re: &'r str) -> Self {
+        self.regexes.push(re);
+        self.kinds.push(None);
         self
     }
 
@@ -131,8 +152,8 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     ///
     /// ## Errors
     ///
-    /// If a regex cannot be compiled, a [regex::Error](https://docs.rs/regex/1/regex/enum.Error.html) is returned.
-    pub fn build(self) -> Result<Lexer<'t, T>, Error> {
+    /// If a regex cannot be compiled, a [Error](https://docs.rs/regex/1/regex/enum.Error.html) is returned.
+    pub fn build(self) -> Result<Lexer<K>, Error> {
         let regexes = self.regexes.into_iter().map(|r| format!("^{}", r));
         let regex_set = RegexSet::new(regexes)?;
         let mut regexes = Vec::new();
@@ -141,7 +162,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
         }
 
         Ok(Lexer {
-            fns: self.fns,
+            kinds: self.kinds,
             regexes,
             regex_set,
         })
@@ -151,15 +172,17 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 /// A regex-based lexer.
 ///
 /// ```
-/// #[derive(Debug, PartialEq, Eq)]
-/// enum Token<'t> {
-///     Ident(&'t str),
+/// use regex_lexer::{LexerBuilder, Token};
+/// 
+/// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+/// enum Tok {
+///     Ident,
 ///     // ...
 /// }
 ///
-/// let lexer = regex_lexer::LexerBuilder::new()
-///     .token(r"\p{XID_Start}\p{XID_Continue}*", |id, _| Some(Token::Ident(id)))
-///     .token(r"\s+", |_, _| None) // skip whitespace
+/// let lexer = LexerBuilder::new()
+///     .token(r"\p{XID_Start}\p{XID_Continue}*", Tok::Ident)
+///     .ignore(r"\s+") // skip whitespace
 ///     // ...
 ///     .build()?;
 ///
@@ -167,24 +190,30 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 ///
 /// # assert_eq!(
 /// #    tokens.collect::<Vec<_>>(),
-/// #    vec![Token::Ident("these"), Token::Ident("are"), Token::Ident("some"), Token::Ident("identifiers")],
+/// #    vec![
+/// #        Token { kind: Tok::Ident, span: 0..5, text: "these" }, 
+/// #        Token { kind: Tok::Ident, span: 6..9, text: "are" }, 
+/// #        Token { kind: Tok::Ident, span: 10..14, text: "some" }, 
+/// #        Token { kind: Tok::Ident, span: 15..26, text: "identifiers" },
+/// #    ],
 /// # );
 /// # Ok::<(), regex::Error>(())
 /// ```
-pub struct Lexer<'t, T: 't> {
-    fns: Vec<Box<dyn Fn(&'t str, Range<usize>) -> Option<T>>>,
+#[derive(Debug)]
+pub struct Lexer<K> {
+    kinds: Vec<Option<K>>,
     regexes: Vec<Regex>,
     regex_set: RegexSet,
 }
 
-impl<'t, T: 't> Lexer<'t, T> {
+impl<K> Lexer<K> {
     /// Create a [LexerBuilder](struct.LexerBuilder.html). This is the same as [LexerBuilder::new](struct.LexerBuilder.html#method.new).
-    pub fn builder<'r>() -> LexerBuilder<'r, 't, T> {
+    pub fn builder<'r>() -> LexerBuilder<'r, K> {
         LexerBuilder::new()
     }
 
     /// Return an iterator over all matched tokens.
-    pub fn tokens<'l>(&'l self, source: &'t str) -> Tokens<'l, 't, T> {
+    pub fn tokens<'l, 't>(&'l self, source: &'t str) -> Tokens<'l, 't, K> {
         Tokens {
             lexer: self,
             source,
@@ -193,27 +222,18 @@ impl<'t, T: 't> Lexer<'t, T> {
     }
 }
 
-impl<'t, T: 't> std::fmt::Debug for Lexer<'t, T> {
-    /// Shows the original regular expressions
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_struct("Lexer")
-            .field("regexes", &self.regexes)
-            .finish() // todo: finish_non_exhaustive
-    }
-}
-
 /// The type returned by [Lexer::tokens](struct.Lexer.html#method.tokens).
 #[derive(Debug)]
-pub struct Tokens<'l, 't, T: 't> {
-    lexer: &'l Lexer<'t, T>,
+pub struct Tokens<'l, 't, K> {
+    lexer: &'l Lexer<K>,
     source: &'t str,
     position: usize,
 }
 
-impl<'l, 't, T: 't> Iterator for Tokens<'l, 't, T> {
-    type Item = T;
+impl<'l, 't, K: Copy> Iterator for Tokens<'l, 't, K> {
+    type Item = Token<'t, K>;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<Self::Item> {
         loop {
             if self.position == self.source.len() {
                 return None;
@@ -228,15 +248,15 @@ impl<'l, 't, T: 't> Iterator for Tokens<'l, 't, T> {
                     assert!(m.start() == 0);
                     (m.end(), i)
                 })
-                .max_by_key(|(len, _)| *len)
+                //.max_by_key(|(len, _)| *len)
+                .next_back()
                 .unwrap();
 
             let span = self.position..self.position + len;
             let text = &self.source[span.clone()];
             self.position += len;
-            let func = &self.lexer.fns[i];
-            match func(text, span) {
-                Some(tok) => return Some(tok),
+            match self.lexer.kinds[i] {
+                Some(kind) => return Some(Token { kind, span, text}),
                 None => {}
             }
         }

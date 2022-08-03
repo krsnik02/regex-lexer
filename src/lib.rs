@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/regex-lexer/0.1.0/regex-lexer")]
+#![doc(html_root_url = "https://docs.rs/regex-lexer/0.2.0/regex-lexer")]
 //! A regex-based lexer (tokenizer).
 //!
 //! ```
@@ -16,14 +16,14 @@
 //! }
 //!
 //! let lexer = LexerBuilder::new()
-//!     .token(r"[0-9]+", |tok| Some(Token::Num(tok.parse().unwrap())))
-//!     .token(r"\+", |_| Some(Token::Add))
-//!     .token(r"-", |_| Some(Token::Sub))
-//!     .token(r"\*", |_| Some(Token::Mul))
-//!     .token(r"/", |_| Some(Token::Div))
-//!     .token(r"\(", |_| Some(Token::Open))
-//!     .token(r"\)", |_| Some(Token::Close))
-//!     .token(r"\s+", |_| None) // skip whitespace
+//!     .token(r"[0-9]+", |ident, _| Some(Token::Num(ident.parse().unwrap())))
+//!     .token(r"\+", |_, _| Some(Token::Add))
+//!     .token(r"-", |_, _| Some(Token::Sub))
+//!     .token(r"\*", |_, _| Some(Token::Mul))
+//!     .token(r"/", |_, _| Some(Token::Div))
+//!     .token(r"\(", |_, _| Some(Token::Open))
+//!     .token(r"\)", |_, _| Some(Token::Close))
+//!     .token(r"\s+", |_, _| None) // skip whitespace
 //!     .build()?;
 //!
 //! let source = "(1 + 2) * 3";
@@ -37,12 +37,15 @@
 //! # Ok::<(), regex::Error>(())
 //! ```
 
+use std::ops::Range;
+
 use regex::{Regex, RegexSet};
+pub use regex::Error;
 
 /// Builder struct for [Lexer](struct.Lexer.html).
 pub struct LexerBuilder<'r, 't, T: 't> {
     regexes: Vec<&'r str>,
-    fns: Vec<Box<dyn Fn(&'t str) -> Option<T>>>,
+    fns: Vec<Box<dyn Fn(&'t str, Range<usize>) -> Option<T>>>,
 }
 
 impl<'r, 't, T: 't> std::fmt::Debug for LexerBuilder<'r, 't, T> {
@@ -83,8 +86,8 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     /// }
     ///
     /// let lexer = regex_lexer::LexerBuilder::new()
-    ///     .token(r"[0-9]*", |num| Some(Token::Num(num.parse().unwrap())))
-    ///     .token(r"\s+", |_| None) // skip whitespace
+    ///     .token(r"[0-9]*", |num, _| Some(Token::Num(num.parse().unwrap())))
+    ///     .token(r"\s+", |_, _| None) // skip whitespace
     ///     // ...
     ///     .build()?;
     ///
@@ -106,8 +109,8 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     /// }
     ///
     /// let lexer = regex_lexer::LexerBuilder::new()
-    ///     .token(r"[a-zA-Z_][a-zA-Z0-9_]*", |id| Some(Token::Ident(id)))
-    ///     .token(r"then", |_| Some(Token::Then))
+    ///     .token(r"[a-zA-Z_][a-zA-Z0-9_]*", |id, _| Some(Token::Ident(id)))
+    ///     .token(r"then", |_, _| Some(Token::Then))
     ///     // ...
     ///     .build()?;
     ///
@@ -117,7 +120,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     /// ```
     pub fn token<F>(mut self, re: &'r str, f: F) -> Self
     where
-        F: Fn(&'t str) -> Option<T> + 'static,
+        F: Fn(&'t str, Range<usize>) -> Option<T> + 'static,
     {
         self.regexes.push(re);
         self.fns.push(Box::new(f));
@@ -129,7 +132,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
     /// ## Errors
     ///
     /// If a regex cannot be compiled, a [regex::Error](https://docs.rs/regex/1/regex/enum.Error.html) is returned.
-    pub fn build(self) -> Result<Lexer<'t, T>, regex::Error> {
+    pub fn build(self) -> Result<Lexer<'t, T>, Error> {
         let regexes = self.regexes.into_iter().map(|r| format!("^{}", r));
         let regex_set = RegexSet::new(regexes)?;
         let mut regexes = Vec::new();
@@ -155,8 +158,8 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 /// }
 ///
 /// let lexer = regex_lexer::LexerBuilder::new()
-///     .token(r"\p{XID_Start}\p{XID_Continue}*", |id| Some(Token::Ident(id)))
-///     .token(r"\s+", |_| None) // skip whitespace
+///     .token(r"\p{XID_Start}\p{XID_Continue}*", |id, _| Some(Token::Ident(id)))
+///     .token(r"\s+", |_, _| None) // skip whitespace
 ///     // ...
 ///     .build()?;
 ///
@@ -169,7 +172,7 @@ impl<'r, 't, T: 't> LexerBuilder<'r, 't, T> {
 /// # Ok::<(), regex::Error>(())
 /// ```
 pub struct Lexer<'t, T: 't> {
-    fns: Vec<Box<dyn Fn(&'t str) -> Option<T>>>,
+    fns: Vec<Box<dyn Fn(&'t str, Range<usize>) -> Option<T>>>,
     regexes: Vec<Regex>,
     regex_set: RegexSet,
 }
@@ -228,10 +231,11 @@ impl<'l, 't, T: 't> Iterator for Tokens<'l, 't, T> {
                 .max_by_key(|(len, _)| *len)
                 .unwrap();
 
-            let tok_str = &self.source[self.position..self.position + len];
+            let span = self.position..self.position + len;
+            let text = &self.source[span.clone()];
             self.position += len;
             let func = &self.lexer.fns[i];
-            match func(tok_str) {
+            match func(text, span) {
                 Some(tok) => return Some(tok),
                 None => {}
             }

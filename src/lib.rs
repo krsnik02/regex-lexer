@@ -30,9 +30,9 @@
 //! assert_eq!(
 //!     lexer.tokens(source).collect::<Vec<_>>(),
 //!     vec![
-//!         Token { kind: Tok::Open, span: 0..1, text: "(" }, 
-//!         Token { kind: Tok::Num, span: 1..2, text: "1" }, 
-//!         Token { kind: Tok::Add, span: 3..4, text: "+" }, 
+//!         Token { kind: Tok::Open, span: 0..1, text: "(" },
+//!         Token { kind: Tok::Num, span: 1..2, text: "1" },
+//!         Token { kind: Tok::Add, span: 3..4, text: "+" },
 //!         Token { kind: Tok::Num, span: 5..6, text: "2" },
 //!         Token { kind: Tok::Close, span: 6..7, text: ")" },
 //!         Token { kind: Tok::Mul, span: 8..9, text: "*" },
@@ -44,8 +44,8 @@
 
 use std::ops::Range;
 
-use regex::{Regex, RegexSet};
 pub use regex::Error;
+use regex::{Regex, RegexSet};
 
 /// A token returned by the lexer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,7 +82,7 @@ impl<'r, K> LexerBuilder<'r, K> {
     /// If the regex matches, it will return a token of kind `kind`.
     /// ```
     /// use regex_lexer::{LexerBuilder, Token};
-    /// 
+    ///
     /// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     /// enum Tok {
     ///     Num,
@@ -110,7 +110,7 @@ impl<'r, K> LexerBuilder<'r, K> {
     /// will be given priority.
     /// ```
     /// use regex_lexer::{LexerBuilder, Token};
-    /// 
+    ///
     /// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     /// enum Tok {
     ///     Ident,
@@ -126,7 +126,7 @@ impl<'r, K> LexerBuilder<'r, K> {
     ///     .build()?;
     ///
     /// assert_eq!(
-    ///     lexer.tokens("let lettuce").collect::<Vec<_>>(), 
+    ///     lexer.tokens("let lettuce").collect::<Vec<_>>(),
     ///     vec![
     ///         Token { kind: Tok::Let, span: 0..3, text: "let" },
     ///         Token { kind: Tok::Ident, span: 4..11, text: "lettuce" },
@@ -134,8 +134,7 @@ impl<'r, K> LexerBuilder<'r, K> {
     /// );
     /// # Ok::<(), regex::Error>(())
     /// ```
-    pub fn token(mut self, re: &'r str, kind: K) -> Self
-    {
+    pub fn token(mut self, re: &'r str, kind: K) -> Self {
         self.regexes.push(re);
         self.kinds.push(Some(kind));
         self
@@ -173,7 +172,7 @@ impl<'r, K> LexerBuilder<'r, K> {
 ///
 /// ```
 /// use regex_lexer::{LexerBuilder, Token};
-/// 
+///
 /// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 /// enum Tok {
 ///     Ident,
@@ -191,9 +190,9 @@ impl<'r, K> LexerBuilder<'r, K> {
 /// # assert_eq!(
 /// #    tokens.collect::<Vec<_>>(),
 /// #    vec![
-/// #        Token { kind: Tok::Ident, span: 0..5, text: "these" }, 
-/// #        Token { kind: Tok::Ident, span: 6..9, text: "are" }, 
-/// #        Token { kind: Tok::Ident, span: 10..14, text: "some" }, 
+/// #        Token { kind: Tok::Ident, span: 0..5, text: "these" },
+/// #        Token { kind: Tok::Ident, span: 6..9, text: "are" },
+/// #        Token { kind: Tok::Ident, span: 10..14, text: "some" },
 /// #        Token { kind: Tok::Ident, span: 15..26, text: "identifiers" },
 /// #    ],
 /// # );
@@ -256,7 +255,7 @@ impl<'l, 't, K: Copy> Iterator for Tokens<'l, 't, K> {
             let text = &self.source[span.clone()];
             self.position += len;
             match self.lexer.kinds[i] {
-                Some(kind) => return Some(Token { kind, span, text}),
+                Some(kind) => return Some(Token { kind, span, text }),
                 None => {}
             }
         }

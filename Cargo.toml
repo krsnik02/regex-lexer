@@ -2,7 +2,7 @@
 name = "regex-lexer"
 version = "0.2.0" # remember to change html_root_url
 authors = ["Gwenhwyfar Hartshaw <ghartshaw@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "A regex-based lexer (tokenizer)"
 readme = "README.md"
 homepage = "https://github.com/krsnik02/regex-lexer/"

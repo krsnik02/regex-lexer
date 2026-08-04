@@ -269,8 +269,7 @@ impl<'l, 't, K: Copy> Iterator for Tokens<'l, 't, K> {
                     (m.end(), i)
                 })
                 //.max_by_key(|(len, _)| *len)
-                .next_back()
-                .unwrap();
+                .next_back()?;
 
             let span = self.position..self.position + len;
             let text = &self.source[span.clone()];
@@ -286,6 +285,32 @@ impl<'l, 't, K: Copy> Iterator for Tokens<'l, 't, K> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // issue #3
+    #[test]
+    fn unrecognized_token() {
+        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        enum Tok {
+            Num,
+        }
+
+        fn main() {
+            let lexer = LexerBuilder::new()
+                .token(r"[0-9]+", Tok::Num)
+                .ignore(r"\s+")
+                .build()
+                .unwrap();
+            let tokens: Vec<_> = lexer.tokens("1 + 2").collect();
+            assert_eq!(
+                tokens,
+                vec![Token {
+                    kind: Tok::Num,
+                    span: 0..1,
+                    text: "1"
+                }]
+            );
+        }
+    }
 
     // issue #4
     #[test]

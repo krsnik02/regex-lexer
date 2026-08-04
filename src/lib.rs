@@ -79,6 +79,10 @@ impl<'r, K> LexerBuilder<'r, K> {
     /// Add a new token that matches the regular expression `re`.
     /// This uses the same syntax as the [regex](http://docs.rs/regex/1/regex) crate.
     ///
+    /// The passed regex must NOT be able to match a zero-length string. If it does
+    /// then the following call to [LexerBuilder::build](struct.LexerBuilder.html#method.build)
+    /// will panic.
+    ///
     /// If the regex matches, it will return a token of kind `kind`.
     /// ```
     /// use regex_lexer::{LexerBuilder, Token};
@@ -90,7 +94,7 @@ impl<'r, K> LexerBuilder<'r, K> {
     /// }
     ///
     /// let lexer = LexerBuilder::new()
-    ///     .token(r"[0-9]*", Tok::Num)
+    ///     .token(r"[0-9]+", Tok::Num)
     ///     .ignore(r"\s+") // skip whitespace
     ///     // ...
     ///     .build()?;
@@ -135,16 +139,24 @@ impl<'r, K> LexerBuilder<'r, K> {
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn token(mut self, re: &'r str, kind: K) -> Self {
-        self.regexes.push(re);
-        self.kinds.push(Some(kind));
+        self.add_regex(re, Some(kind));
         self
     }
 
     /// Add a new regex which if matched will ignore the matched text.
+    ///
+    /// The passed regex must NOT be able to match a zero-length string. If it does
+    /// then the following call to [LexerBuilder::build](struct.LexerBuilder.html#method.build)
+    /// will panic.
     pub fn ignore(mut self, re: &'r str) -> Self {
-        self.regexes.push(re);
-        self.kinds.push(None);
+        self.add_regex(re, None);
         self
+    }
+
+    /// Inserts a regex into the lexer matching the specified kind.
+    fn add_regex(&mut self, re: &'r str, kind: Option<K>) {
+        self.regexes.push(re);
+        self.kinds.push(kind);
     }
 
     /// Construct a [Lexer](struct.Lexer.html) which matches these tokens.
@@ -152,12 +164,21 @@ impl<'r, K> LexerBuilder<'r, K> {
     /// ## Errors
     ///
     /// If a regex cannot be compiled, a [Error](https://docs.rs/regex/1/regex/enum.Error.html) is returned.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if any of the passed regexes would match a zero-length string.
     pub fn build(self) -> Result<Lexer<K>, Error> {
         let regexes = self.regexes.into_iter().map(|r| format!("^(?:{})", r));
         let regex_set = RegexSet::new(regexes)?;
+
         let mut regexes = Vec::new();
         for pattern in regex_set.patterns() {
-            regexes.push(Regex::new(pattern)?);
+            let regex = Regex::new(pattern)?;
+            if regex.is_match("") {
+                panic!("Regex {regex:?} can match a zero-length string");
+            }
+            regexes.push(regex);
         }
 
         Ok(Lexer {
@@ -266,6 +287,23 @@ impl<'l, 't, K: Copy> Iterator for Tokens<'l, 't, K> {
 mod tests {
     use super::*;
 
+    // issue #4
+    #[test]
+    #[should_panic]
+    fn zero_length_matches() {
+        #[derive(Debug, Copy, Clone)]
+        enum Tok {
+            Num,
+        }
+
+        let _lexer = LexerBuilder::new()
+            .token(r"[0-9]*", Tok::Num)
+            .ignore(r"\s+")
+            .build()
+            .unwrap();
+    }
+
+    // issue #5
     #[test]
     fn top_level_alteration() {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]

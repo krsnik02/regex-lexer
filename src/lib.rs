@@ -153,7 +153,7 @@ impl<'r, K> LexerBuilder<'r, K> {
     ///
     /// If a regex cannot be compiled, a [Error](https://docs.rs/regex/1/regex/enum.Error.html) is returned.
     pub fn build(self) -> Result<Lexer<K>, Error> {
-        let regexes = self.regexes.into_iter().map(|r| format!("^{}", r));
+        let regexes = self.regexes.into_iter().map(|r| format!("^(?:{})", r));
         let regex_set = RegexSet::new(regexes)?;
         let mut regexes = Vec::new();
         for pattern in regex_set.patterns() {
@@ -259,5 +259,47 @@ impl<'l, 't, K: Copy> Iterator for Tokens<'l, 't, K> {
                 None => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn top_level_alteration() {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        enum Tok {
+            Ws,
+            Word,
+        }
+
+        let lexer = LexerBuilder::new()
+            .token(r"\s+", Tok::Ws)
+            .token(r"foo|bar", Tok::Word)
+            .build()
+            .unwrap();
+
+        let tokens: Vec<_> = lexer.tokens("foo bar").collect();
+        assert_eq!(
+            tokens,
+            [
+                Token {
+                    kind: Tok::Word,
+                    span: 0..3,
+                    text: "foo"
+                },
+                Token {
+                    kind: Tok::Ws,
+                    span: 3..4,
+                    text: " "
+                },
+                Token {
+                    kind: Tok::Word,
+                    span: 4..7,
+                    text: "bar"
+                },
+            ]
+        );
     }
 }

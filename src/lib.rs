@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/regex-lexer/0.2.1/regex-lexer")]
+#![doc(html_root_url = "https://docs.rs/regex-lexer/0.2.2/regex-lexer")]
 //! A regex-based lexer (tokenizer).
 //!
 //! ```
